@@ -276,7 +276,7 @@
             </table>
         </div>
     </div>
-    <div class="footer">Sistema de control de Registro de retorno de charolas V3.0 | E.Lugo 2026 | v7 - Corrección FECHA BITÁCORA</div>
+    <div class="footer">Sistema de control de Registro de retorno de charolas V3.0 | E.Lugo 2026 | v8 - Tarjetas corregidas</div>
 </div>
 
 <div id="detalleModal" class="modal">
@@ -322,7 +322,7 @@
 // ============================================
 // CONFIGURACIÓN
 // ============================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxsDP201kZk9XHB6T5rAib0Bqtz5lNqSKIT8BCWJUeywPsY3U1_3eFWmlNEm1HDMAMV/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyQqhTP8zGEuixAZHgcGQTdoa0d8UZWxM_Z4_S2DJgAkaXJJI6lHpmwO11cxBeuZTI-/exec';
 const EMPLEADOS_EXCLUIDOS = ['ARIANA LOPEZ FERNANDEZ', 'MICHELLE VELAZQUEZ GODINEZ', 'LETICIA RODRIGUEZ REYES'];
 let todosRegistros = [];
 let registrosFiltrados = [];
@@ -349,31 +349,24 @@ function hideLoader() {
 
 // ============================================
 // FUNCIONES DE FECHA
-// v7 - Corregido: FECHA BITÁCORA ahora parsea correctamente con guiones y fallback
 // ============================================
 function parseFechaDDMMYYYY(fechaStr) {
     if (!fechaStr) return null;
     try {
-        // Si ya es un objeto Date, devolverlo
         if (typeof fechaStr === 'object' && fechaStr.getTime) {
             return isNaN(fechaStr.getTime()) ? null : fechaStr;
         }
-        // Si es string, intentar parsear
-        const strFecha = String(fechaStr);
-        // Detectar separador: puede ser '/' o '-'
-        const separador = strFecha.includes('-') ? '-' : '/';
-        const partes = strFecha.split(separador);
+        const separador = String(fechaStr).includes('-') ? '-' : '/';
+        const partes = String(fechaStr).split(separador);
         if (partes.length === 3) {
             const dia = parseInt(partes[0]);
             const mes = parseInt(partes[1]) - 1;
             const anio = parseInt(partes[2]);
-            if (!isNaN(dia) && !isNaN(mes) && !isNaN(anio) && anio > 1900 && anio < 2100) {
+            if (!isNaN(dia) && !isNaN(mes) && !isNaN(anio)) {
                 return new Date(anio, mes, dia);
             }
         }
-        // Fallback: intentar parseo nativo
-        const fechaNativa = new Date(fechaStr);
-        return isNaN(fechaNativa.getTime()) ? null : fechaNativa;
+        return null;
     } catch(e) {
         return null;
     }
@@ -400,7 +393,6 @@ function parseFechaHoraDDMMYYYY(fechaStr) {
                 return new Date(anio, mes, dia, horas, minutos);
             }
         }
-        // Fallback: intentar parseo nativo si no vino en formato DD/MM/YYYY
         const fechaNativa = new Date(fechaStr);
         return isNaN(fechaNativa.getTime()) ? null : fechaNativa;
     } catch(e) {
@@ -410,7 +402,6 @@ function parseFechaHoraDDMMYYYY(fechaStr) {
 
 function fechaToExcelSerial(fecha) {
     if (!fecha || isNaN(fecha.getTime())) return null;
-    // Usar UTC para evitar problemas de zona horaria
     const excelEpoch = new Date(Date.UTC(1899, 11, 30));
     const diff = (Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()) - excelEpoch.getTime()) / (1000 * 60 * 60 * 24);
     return Math.round(diff * 100000) / 100000;
@@ -418,7 +409,6 @@ function fechaToExcelSerial(fecha) {
 
 function fechaHoraToExcelSerial(fecha) {
     if (!fecha || isNaN(fecha.getTime())) return null;
-    // Usar UTC para evitar problemas de zona horaria
     const excelEpoch = new Date(Date.UTC(1899, 11, 30));
     const diff = (Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), fecha.getHours(), fecha.getMinutes(), fecha.getSeconds()) - excelEpoch.getTime()) / (1000 * 60 * 60 * 24);
     return Math.round(diff * 100000) / 100000;
@@ -441,6 +431,20 @@ function formatearFechaMostrar(fechaStr) {
 function obtenerSoloFecha(fechaStr) {
     if (!fechaStr) return '';
     try {
+        // Si ya viene en formato DD/MM/YYYY, devolverlo directamente
+        if (typeof fechaStr === 'string' && fechaStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            return fechaStr;
+        }
+        // Si es objeto Date, formatear
+        if (typeof fechaStr === 'object' && fechaStr.getTime) {
+            const fecha = fechaStr;
+            if (isNaN(fecha.getTime())) return '';
+            const dia = fecha.getDate().toString().padStart(2, '0');
+            const mes = (fecha.getMonth() + 1).toString().padStart(2, '0');
+            const anio = fecha.getFullYear();
+            return `${dia}/${mes}/${anio}`;
+        }
+        // Fallback: intentar parsear con new Date
         const fecha = new Date(fechaStr);
         if (isNaN(fecha.getTime())) return '';
         const dia = fecha.getDate().toString().padStart(2, '0');
@@ -466,6 +470,18 @@ function sonMismaFecha(f1, f2) {
     return d1.getTime() === d2.getTime();
 }
 
+function obtenerFechaHoyCDMX() {
+    const ahora = new Date();
+    const fechaCDMX = new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
+    const dia = fechaCDMX.getDate().toString().padStart(2, '0');
+    const mes = (fechaCDMX.getMonth() + 1).toString().padStart(2, '0');
+    const anio = fechaCDMX.getFullYear();
+    return `${dia}/${mes}/${anio}`;
+}
+
+// ============================================
+// CARGAR REGISTROS
+// ============================================
 async function cargarRegistros() {
     showLoader();
     document.getElementById('fechaActualizacion').innerHTML = `Última actualización: ${new Date().toLocaleString()}`;
@@ -491,47 +507,86 @@ async function cargarRegistros() {
     }
 }
 
+// ============================================
+// CALCULAR ÚLTIMO TURNO DEL DÍA DE HOY
+// 🔴 CORREGIDO: Ahora filtra por fecha de hoy y último turno del día
+// ============================================
 function calcularUltimaFechaYTurno() {
     if (todosRegistros.length === 0) {
-        actualizarTarjetas({ fecha:'', turno:'SIN REGISTROS', registros:0, tiendas:0, dominos:0, starbucks:0 });
+        actualizarTarjetas({ fecha: '', turno: 'SIN REGISTROS', registros: 0, tiendas: 0, dominos: 0, starbucks: 0 });
         return;
     }
-    
+
+    // 1. Excluir empleados no deseados
     const registrosFiltradosExcluidos = todosRegistros.filter(reg => {
         const empleado = (reg.datosGenerales?.empleado || '').toUpperCase().trim();
         return !EMPLEADOS_EXCLUIDOS.includes(empleado);
     });
-    
+
     if (registrosFiltradosExcluidos.length === 0) {
-        actualizarTarjetas({ fecha:'', turno:'SIN REGISTROS', registros:0, tiendas:0, dominos:0, starbucks:0 });
+        actualizarTarjetas({ fecha: '', turno: 'SIN REGISTROS', registros: 0, tiendas: 0, dominos: 0, starbucks: 0 });
         return;
     }
-    
-    let fechaMasReciente = null, turnoDeFechaMasReciente = null;
-    for (const reg of registrosFiltradosExcluidos) {
+
+    // 2. Obtener fecha de hoy en CDMX
+    const fechaHoy = obtenerFechaHoyCDMX();
+
+    // 3. Filtrar registros que sean de hoy
+    const registrosDeHoy = registrosFiltradosExcluidos.filter(reg => {
         const fechaReg = obtenerSoloFecha(reg.fecha);
-        if (fechaReg && (!fechaMasReciente || esFechaMayor(fechaReg, fechaMasReciente))) {
-            fechaMasReciente = fechaReg;
-            turnoDeFechaMasReciente = reg.turno;
+        return fechaReg === fechaHoy;
+    });
+
+    if (registrosDeHoy.length === 0) {
+        actualizarTarjetas({
+            fecha: fechaHoy,
+            turno: 'SIN REGISTROS HOY',
+            registros: 0,
+            tiendas: 0,
+            dominos: 0,
+            starbucks: 0
+        });
+        return;
+    }
+
+    // 4. Identificar el último turno registrado HOY
+    const ordenTurnos = { 'PRIMERO': 1, 'SEGUNDO': 2, 'TERCERO': 3 };
+    let ultimoTurno = '';
+    let maxOrden = 0;
+
+    for (const reg of registrosDeHoy) {
+        const turno = reg.turno || '';
+        const orden = ordenTurnos[turno] || 0;
+        if (orden > maxOrden) {
+            maxOrden = orden;
+            ultimoTurno = turno;
         }
     }
-    if (!fechaMasReciente) {
-        actualizarTarjetas({ fecha:'', turno:'SIN REGISTROS', registros:0, tiendas:0, dominos:0, starbucks:0 });
-        return;
-    }
-    let totalRegistros=0, totalTiendas=0, totalDominos=0, totalStarbucks=0;
-    for (const reg of registrosFiltradosExcluidos) {
-        const fechaReg = obtenerSoloFecha(reg.fecha);
-        if (sonMismaFecha(fechaReg, fechaMasReciente) && reg.turno === turnoDeFechaMasReciente) {
+
+    // 5. Sumar totales del día de hoy y del último turno
+    let totalRegistros = 0;
+    let totalTiendas = 0;
+    let totalDominos = 0;
+    let totalStarbucks = 0;
+
+    for (const reg of registrosDeHoy) {
+        if (reg.turno === ultimoTurno) {
             totalRegistros++;
-            totalTiendas += parseInt(reg.resumen?.totalTiendas) || 0;
-            totalDominos += parseInt(reg.resumen?.totalDominos) || 0;
-            totalStarbucks += parseInt(reg.resumen?.totalStarbucks) || 0;
+            let tiendas = 0, dominos = 0, starbucks = 0;
+            (reg.registros || []).forEach(t => {
+                tiendas++;
+                if (t.tipo === 'DOMINOS') dominos += parseFloat(t.cantidadFisica) || 0;
+                if (t.tipo === 'STARBUCKS') starbucks += parseFloat(t.cantidadFisica) || 0;
+            });
+            totalTiendas += tiendas;
+            totalDominos += dominos;
+            totalStarbucks += starbucks;
         }
     }
+
     actualizarTarjetas({
-        fecha: fechaMasReciente,
-        turno: turnoDeFechaMasReciente,
+        fecha: fechaHoy,
+        turno: ultimoTurno,
         registros: totalRegistros,
         tiendas: totalTiendas,
         dominos: totalDominos,
@@ -541,7 +596,7 @@ function calcularUltimaFechaYTurno() {
 
 function actualizarTarjetas(d) {
     document.getElementById('totalRegistrosUltimoTurno').textContent = d.registros;
-    document.getElementById('turnoUltimoTurno').textContent = `TURNO: ${d.turno}`;
+    document.getElementById('turnoUltimoTurno').textContent = `TURNO: ${d.turno} - ${d.fecha}`;
     document.getElementById('totalDominosUltimoTurno').textContent = Math.round(d.dominos);
     document.getElementById('totalStarbucksUltimoTurno').textContent = Math.round(d.starbucks);
     document.getElementById('totalTiendasUltimoTurno').textContent = d.tiendas;
@@ -657,8 +712,7 @@ function cerrarModalDescarga() {
 }
 
 // ============================================
-// DESCARGA DE REPORTE - CON FORMATO DE CELDAS
-// v7 - Corregido: FECHA BITÁCORA ahora se descarga correctamente
+// DESCARGA DE REPORTE
 // ============================================
 async function descargarReporte() {
     const fechaInicio = document.getElementById('fechaInicio').value;
@@ -700,7 +754,6 @@ async function descargarReporte() {
         
         const todosRegistrosLocal = result.data || [];
         
-        // FILTRAR POR FECHA
         const fechaInicioDate = new Date(fechaInicio + 'T00:00:00');
         const fechaFinDate = new Date(fechaFin + 'T23:59:59');
         
@@ -719,7 +772,6 @@ async function descargarReporte() {
             return;
         }
         
-        // ORDENAR por marca temporal (más antiguo a más nuevo)
         registrosFiltradosFecha.sort((a, b) => {
             const fechaA = new Date(a.marcaTemporal);
             const fechaB = new Date(b.marcaTemporal);
@@ -753,7 +805,6 @@ async function descargarReporte() {
                 });
             });
             
-            // FORMATO PARA FECHA: dd/mm/aaaa
             formatos = { 'FECHA': 'dd/mm/yyyy' };
             
         } else if (password === 'MCHAROLAS') {
@@ -770,18 +821,7 @@ async function descargarReporte() {
                     const fechaObj = parseFechaDDMMYYYY(reg.fecha);
                     const fechaHoraObj = parseFechaHoraDDMMYYYY(reg.marcaTemporal);
                     const fechaValidacionObj = parseFechaHoraDDMMYYYY(reg.fechaValidacion);
-                    // CORREGIDO: parsear FECHA BITÁCORA con manejo mejorado
-                    let fechaBitacoraObj = null;
-                    if (reg.fechaBitacora) {
-                        fechaBitacoraObj = parseFechaDDMMYYYY(reg.fechaBitacora);
-                        // Si falla el parseo, intentar con new Date directamente
-                        if (!fechaBitacoraObj) {
-                            const fechaNativa = new Date(reg.fechaBitacora);
-                            if (!isNaN(fechaNativa.getTime())) {
-                                fechaBitacoraObj = fechaNativa;
-                            }
-                        }
-                    }
+                    const fechaBitacoraObj = parseFechaDDMMYYYY(reg.fechaBitacora);
                     
                     datosExcel.push({
                         'MARCA TEMPORAL': fechaHoraObj ? fechaHoraToExcelSerial(fechaHoraObj) : null,
@@ -808,7 +848,6 @@ async function descargarReporte() {
                 });
             });
             
-            // FORMATOS: fecha con hora y fecha sin hora
             formatos = {
                 'MARCA TEMPORAL': 'dd/mm/yyyy hh:mm:ss AM/PM',
                 'FECHA': 'dd/mm/yyyy',
@@ -820,14 +859,12 @@ async function descargarReporte() {
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(datosExcel);
         
-        // APLICAR FORMATO DE CELDAS A LAS COLUMNAS
         const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
         const colMap = {};
         columnas.forEach((col, idx) => {
             colMap[col] = XLSX.utils.encode_col(idx);
         });
         
-        // Aplicar formato a cada celda de las columnas de fecha
         for (const [colName, formato] of Object.entries(formatos)) {
             const colLetter = colMap[colName];
             if (!colLetter) continue;
@@ -836,13 +873,11 @@ async function descargarReporte() {
                 const cellRef = colLetter + row;
                 const cell = ws[cellRef];
                 if (cell && cell.v && typeof cell.v === 'number') {
-                    // Aplicar formato de número
                     cell.z = formato;
                 }
             }
         }
         
-        // Anchos de columna
         const colWidths = columnas.map(col => ({ wch: Math.max(col.length, 18) }));
         ws['!cols'] = colWidths;
         
@@ -881,18 +916,20 @@ function enviarCorteWhatsApp() {
     const fecha = new Date();
     const fechaStr = `${fecha.getDate()}/${fecha.getMonth()+1}/${fecha.getFullYear()}`;
     const mensaje = `📊 *CORTE DE TURNO* 📊
-━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 📅 Fecha: ${fechaStr}
 🔄 Turno: *${d.turno}*
-━━━━━━━━━━━━━━━━━━
+📆 Fecha del turno: *${d.fecha || 'N/A'}*
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 *RESUMEN DEL TURNO*
-━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 📝 Registros capturados: ${d.registros}
 🏪 Total tiendas: ${d.tiendas}
 🍕 Charolas DOMINO'S: ${d.dominos}
 ☕ Charolas STARBUCKS: ${d.starbucks}
-━━━━━━━━━━━━━━━━━━
-✅ *Corte generado automáticamente*`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ *Corte generado automáticamente*
+Sistema de Control de Charolas`;
 
     const mensajeCodificado = encodeURIComponent(mensaje);
     window.open(`https://api.whatsapp.com/send?text=${mensajeCodificado}`, '_blank');
@@ -914,8 +951,61 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === this) cerrarModalDescarga();
     });
 });
+
+
+
+
+
+
+
+// ============================================
+// DIAGNÓSTICO - Ver datos recibidos
+// ============================================
+function diagnosticarDatos() {
+    console.log('🔍 DIAGNÓSTICO DE DATOS');
+    console.log(`📊 Total registros: ${todosRegistros.length}`);
+    
+    if (todosRegistros.length === 0) {
+        console.log('❌ NO HAY REGISTROS - Revisa la URL del App Script');
+        return;
+    }
+    
+    // Ver estructura del primer registro
+    const primerReg = todosRegistros[0];
+    console.log('📋 Estructura del primer registro:', JSON.stringify(primerReg, null, 2));
+    
+    // Ver si tiene resumen
+    console.log('📌 ¿Tiene resumen?', primerReg.resumen ? 'SÍ' : 'NO');
+    if (primerReg.resumen) {
+        console.log('📌 resumen:', primerReg.resumen);
+    }
+    
+    // Ver si tiene registros
+    console.log('📌 ¿Tiene registros?', primerReg.registros ? 'SÍ' : 'NO');
+    if (primerReg.registros) {
+        console.log('📌 registros:', primerReg.registros.length);
+        console.log('📌 Primer registro:', primerReg.registros[0]);
+    }
+    
+    // Ver fecha de hoy
+    const fechaHoy = obtenerFechaHoyCDMX();
+    console.log(`📅 Fecha de hoy: ${fechaHoy}`);
+    
+    // Ver registros de hoy
+    const registrosDeHoy = todosRegistros.filter(reg => {
+        const fechaReg = obtenerSoloFecha(reg.fecha);
+        return fechaReg === fechaHoy;
+    });
+    console.log(`📊 Registros de hoy: ${registrosDeHoy.length}`);
+    
+    if (registrosDeHoy.length > 0) {
+        console.log('📋 Primer registro de hoy:', registrosDeHoy[0]);
+    }
+    
+    // Ver empleados excluidos
+    console.log('🚫 Empleados excluidos:', EMPLEADOS_EXCLUIDOS);
+}
+
 </script>
 </body>
 </html>
-
-Ambiente de prueba 7 final para produccion
