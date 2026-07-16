@@ -276,7 +276,7 @@
             </table>
         </div>
     </div>
-    <div class="footer">Sistema de control de Registro de retorno de charolas V3.0 | E.Lugo 2026 | v8 - Tarjetas corregidas</div>
+    <div class="footer">Sistema de control de Registro de retorno de charolas V3.0 | E.Lugo 2026 | v9 - Corrección tercer turno</div>
 </div>
 
 <div id="detalleModal" class="modal">
@@ -348,7 +348,7 @@ function hideLoader() {
 }
 
 // ============================================
-// FUNCIONES DE FECHA
+// FUNCIONES DE FECHA - CORREGIDAS PARA TERCER TURNO
 // ============================================
 function parseFechaDDMMYYYY(fechaStr) {
     if (!fechaStr) return null;
@@ -431,11 +431,9 @@ function formatearFechaMostrar(fechaStr) {
 function obtenerSoloFecha(fechaStr) {
     if (!fechaStr) return '';
     try {
-        // Si ya viene en formato DD/MM/YYYY, devolverlo directamente
         if (typeof fechaStr === 'string' && fechaStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
             return fechaStr;
         }
-        // Si es objeto Date, formatear
         if (typeof fechaStr === 'object' && fechaStr.getTime) {
             const fecha = fechaStr;
             if (isNaN(fecha.getTime())) return '';
@@ -444,7 +442,6 @@ function obtenerSoloFecha(fechaStr) {
             const anio = fecha.getFullYear();
             return `${dia}/${mes}/${anio}`;
         }
-        // Fallback: intentar parsear con new Date
         const fecha = new Date(fechaStr);
         if (isNaN(fecha.getTime())) return '';
         const dia = fecha.getDate().toString().padStart(2, '0');
@@ -470,13 +467,53 @@ function sonMismaFecha(f1, f2) {
     return d1.getTime() === d2.getTime();
 }
 
-function obtenerFechaHoyCDMX() {
+// ============================================
+// OBTENER FECHA DEL TURNO - CORREGIDA
+// Para el tercer turno (21:30 - 6:00), la fecha del turno es el día anterior
+// cuando estamos entre 00:00 y 5:59
+// ============================================
+function obtenerFechaTurnoCDMX() {
     const ahora = new Date();
     const fechaCDMX = new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
-    const dia = fechaCDMX.getDate().toString().padStart(2, '0');
-    const mes = (fechaCDMX.getMonth() + 1).toString().padStart(2, '0');
-    const anio = fechaCDMX.getFullYear();
+    const hora = fechaCDMX.getHours();
+    const minutos = fechaCDMX.getMinutes();
+    const horaCompleta = hora + (minutos / 60);
+    
+    // Si es tercer turno (00:00 - 5:59), la fecha del turno es el día anterior
+    if (horaCompleta >= 0 && horaCompleta < 6) {
+        const diaAnterior = new Date(fechaCDMX);
+        diaAnterior.setDate(fechaCDMX.getDate() - 1);
+        return diaAnterior;
+    }
+    
+    return fechaCDMX;
+}
+
+function obtenerFechaTurnoStr() {
+    const fecha = obtenerFechaTurnoCDMX();
+    const dia = fecha.getDate().toString().padStart(2, '0');
+    const mes = (fecha.getMonth() + 1).toString().padStart(2, '0');
+    const anio = fecha.getFullYear();
     return `${dia}/${mes}/${anio}`;
+}
+
+function obtenerFechaHoraCDMX() {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
+}
+
+function obtenerTurnoActual() {
+    const ahora = obtenerFechaHoraCDMX();
+    const h = ahora.getHours();
+    const m = ahora.getMinutes();
+    const horaCompleta = h + (m / 60);
+
+    if (horaCompleta >= 6 && horaCompleta < 14) {
+        return 'PRIMERO';
+    } else if (horaCompleta >= 14 && horaCompleta < 21.5) {
+        return 'SEGUNDO';
+    } else {
+        return 'TERCERO';
+    }
 }
 
 // ============================================
@@ -508,8 +545,7 @@ async function cargarRegistros() {
 }
 
 // ============================================
-// CALCULAR ÚLTIMO TURNO DEL DÍA DE HOY
-// 🔴 CORREGIDO: Ahora filtra por fecha de hoy y último turno del día
+// CALCULAR ÚLTIMO TURNO - CORREGIDO
 // ============================================
 function calcularUltimaFechaYTurno() {
     if (todosRegistros.length === 0) {
@@ -528,19 +564,19 @@ function calcularUltimaFechaYTurno() {
         return;
     }
 
-    // 2. Obtener fecha de hoy en CDMX
-    const fechaHoy = obtenerFechaHoyCDMX();
+    // 2. Obtener la fecha del turno (considerando que tercer turno pertenece al día anterior)
+    const fechaTurnoStr = obtenerFechaTurnoStr();
 
-    // 3. Filtrar registros que sean de hoy
-    const registrosDeHoy = registrosFiltradosExcluidos.filter(reg => {
+    // 3. Filtrar registros que pertenecen a la fecha del turno
+    const registrosDelTurno = registrosFiltradosExcluidos.filter(reg => {
         const fechaReg = obtenerSoloFecha(reg.fecha);
-        return fechaReg === fechaHoy;
+        return fechaReg === fechaTurnoStr;
     });
 
-    if (registrosDeHoy.length === 0) {
+    if (registrosDelTurno.length === 0) {
         actualizarTarjetas({
-            fecha: fechaHoy,
-            turno: 'SIN REGISTROS HOY',
+            fecha: fechaTurnoStr,
+            turno: 'SIN REGISTROS',
             registros: 0,
             tiendas: 0,
             dominos: 0,
@@ -549,27 +585,49 @@ function calcularUltimaFechaYTurno() {
         return;
     }
 
-    // 4. Identificar el último turno registrado HOY
+    // 4. Identificar el turno más reciente (por hora de la marca temporal)
     const ordenTurnos = { 'PRIMERO': 1, 'SEGUNDO': 2, 'TERCERO': 3 };
     let ultimoTurno = '';
-    let maxOrden = 0;
+    let ultimaHora = null;
 
-    for (const reg of registrosDeHoy) {
+    for (const reg of registrosDelTurno) {
         const turno = reg.turno || '';
-        const orden = ordenTurnos[turno] || 0;
-        if (orden > maxOrden) {
-            maxOrden = orden;
-            ultimoTurno = turno;
+        const fechaHora = parseFechaHoraDDMMYYYY(reg.marcaTemporal);
+        if (fechaHora) {
+            const horaCompleta = fechaHora.getHours() + (fechaHora.getMinutes() / 60);
+            const orden = ordenTurnos[turno] || 0;
+            // Para tercer turno, ajustar la hora para que se considere después del segundo
+            let horaAjustada = horaCompleta;
+            if (turno === 'TERCERO' && horaCompleta < 6) {
+                horaAjustada = horaCompleta + 24; // Sumar 24h para que sea después del segundo
+            }
+            // Para primero y segundo, si son antes de las 6, ajustar
+            if (turno === 'PRIMERO' && horaCompleta < 6) {
+                horaAjustada = horaCompleta + 24;
+            }
+            if (turno === 'SEGUNDO' && horaCompleta < 6) {
+                horaAjustada = horaCompleta + 24;
+            }
+            
+            if (ultimaHora === null || horaAjustada > ultimaHora) {
+                ultimaHora = horaAjustada;
+                ultimoTurno = turno;
+            }
         }
     }
 
-    // 5. Sumar totales del día de hoy y del último turno
+    // Si no se pudo determinar el turno por hora, usar el último de la lista
+    if (!ultimoTurno) {
+        ultimoTurno = registrosDelTurno[registrosDelTurno.length - 1].turno || '';
+    }
+
+    // 5. Sumar totales del turno identificado
     let totalRegistros = 0;
     let totalTiendas = 0;
     let totalDominos = 0;
     let totalStarbucks = 0;
 
-    for (const reg of registrosDeHoy) {
+    for (const reg of registrosDelTurno) {
         if (reg.turno === ultimoTurno) {
             totalRegistros++;
             let tiendas = 0, dominos = 0, starbucks = 0;
@@ -585,7 +643,7 @@ function calcularUltimaFechaYTurno() {
     }
 
     actualizarTarjetas({
-        fecha: fechaHoy,
+        fecha: fechaTurnoStr,
         turno: ultimoTurno,
         registros: totalRegistros,
         tiendas: totalTiendas,
@@ -907,9 +965,13 @@ async function descargarReporte() {
     hideLoader();
 }
 
+// ============================================
+// ENVIAR CORTE POR WHATSAPP - CORREGIDO
+// Ahora usa los datos de las tarjetas que ya están corregidos
+// ============================================
 function enviarCorteWhatsApp() {
     if (!window.datosUltimoTurno || window.datosUltimoTurno.registros === 0) {
-        alert('No hay datos del último turno para enviar');
+        alert('⚠️ No hay datos del último turno para enviar\n\nSi acaba de terminar el tercer turno, asegúrate de que haya registros en el sistema.');
         return;
     }
     const d = window.datosUltimoTurno;
@@ -917,9 +979,9 @@ function enviarCorteWhatsApp() {
     const fechaStr = `${fecha.getDate()}/${fecha.getMonth()+1}/${fecha.getFullYear()}`;
     const mensaje = `📊 *CORTE DE TURNO* 📊
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 Fecha: ${fechaStr}
+📅 Fecha del turno: *${d.fecha || 'N/A'}*
 🔄 Turno: *${d.turno}*
-📆 Fecha del turno: *${d.fecha || 'N/A'}*
+📆 Reporte generado: ${fechaStr}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 *RESUMEN DEL TURNO*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -952,12 +1014,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-
-
-
-
-
-
 // ============================================
 // DIAGNÓSTICO - Ver datos recibidos
 // ============================================
@@ -970,39 +1026,29 @@ function diagnosticarDatos() {
         return;
     }
     
-    // Ver estructura del primer registro
     const primerReg = todosRegistros[0];
     console.log('📋 Estructura del primer registro:', JSON.stringify(primerReg, null, 2));
     
-    // Ver si tiene resumen
     console.log('📌 ¿Tiene resumen?', primerReg.resumen ? 'SÍ' : 'NO');
     if (primerReg.resumen) {
         console.log('📌 resumen:', primerReg.resumen);
     }
     
-    // Ver si tiene registros
     console.log('📌 ¿Tiene registros?', primerReg.registros ? 'SÍ' : 'NO');
     if (primerReg.registros) {
         console.log('📌 registros:', primerReg.registros.length);
         console.log('📌 Primer registro:', primerReg.registros[0]);
     }
     
-    // Ver fecha de hoy
-    const fechaHoy = obtenerFechaHoyCDMX();
-    console.log(`📅 Fecha de hoy: ${fechaHoy}`);
+    const fechaTurnoStr = obtenerFechaTurnoStr();
+    console.log(`📅 Fecha del turno (considerando tercer turno): ${fechaTurnoStr}`);
     
-    // Ver registros de hoy
-    const registrosDeHoy = todosRegistros.filter(reg => {
+    const registrosDelTurno = todosRegistros.filter(reg => {
         const fechaReg = obtenerSoloFecha(reg.fecha);
-        return fechaReg === fechaHoy;
+        return fechaReg === fechaTurnoStr;
     });
-    console.log(`📊 Registros de hoy: ${registrosDeHoy.length}`);
+    console.log(`📊 Registros del turno (${fechaTurnoStr}): ${registrosDelTurno.length}`);
     
-    if (registrosDeHoy.length > 0) {
-        console.log('📋 Primer registro de hoy:', registrosDeHoy[0]);
-    }
-    
-    // Ver empleados excluidos
     console.log('🚫 Empleados excluidos:', EMPLEADOS_EXCLUIDOS);
 }
 
