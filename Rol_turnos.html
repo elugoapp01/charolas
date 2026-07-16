@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turnos Rotativos</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui; background: #eef2f5; padding: 20px; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        .card { background: white; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background: white; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; gap: 10px; }
+        h1 { font-size: 1.3rem; color: #1e4663; }
+        .controls { display: flex; gap: 15px; align-items: center; background: #f8fafc; padding: 5px 15px; border-radius: 40px; }
+        .controls input, .controls select { padding: 5px 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-family: inherit; }
+        .controls input { width: 70px; text-align: center; }
+        button { background: #2c7da0; color: white; border: none; padding: 8px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; min-width: 800px; }
+        th { background: #f1f5f9; padding: 12px 6px; font-weight: 600; color: #1e4663; border-bottom: 1px solid #e2e8f0; }
+        td { padding: 8px 5px; text-align: center; border-bottom: 1px solid #f0f3f8; transition: background-color 0.2s ease; }
+        tbody tr:hover td { background-color: #dbeafe !important; }
+        .horario-col { font-weight: 600; text-align: left; padding-left: 12px; white-space: nowrap; background-color: white; }
+        .nombre-col { font-weight: 500; text-align: left; padding-left: 10px; white-space: nowrap; background-color: white; }
+        .asiste { color: #1e5a7d; }
+        .descanso { color: #0059b3; font-weight: bold; background: #e0f0ff; border-radius: 20px; padding: 3px 10px; display: inline-block; }
+        .footer-note { text-align: center; font-size: 0.7rem; padding: 12px; color: #5b7a99; border-top: 1px solid #e9edf2; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; border-radius: 20px; width: 90%; max-width: 500px; max-height: 85vh; overflow: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #ddd; }
+        .modal-header h3 { margin: 0; }
+        .modal-buttons { display: flex; gap: 10px; }
+        .modal-buttons button { padding: 6px 16px; font-size: 0.8rem; }
+        .btn-cerrar-modal { background: #6c757d; }
+        .btn-cerrar-modal:hover { background: #5a6268; }
+        .btn-guardar-modal { background: #28a745; }
+        .btn-guardar-modal:hover { background: #218838; }
+        .employee-list { padding: 15px 20px; max-height: 50vh; overflow-y: auto; }
+        .employee-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eef2f5; gap: 10px; }
+        .employee-name { flex: 1; font-weight: 500; }
+        .edit-name { background: #2c7da0; color: white; border: none; padding: 4px 12px; border-radius: 8px; cursor: pointer; font-size: 0.7rem; }
+        .add-form { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid #e9edf2; }
+        .add-form input { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #cbd5e1; }
+        .add-form button { background: #2c7da0; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+        .password-prompt { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 2000; }
+        .password-box { background: white; border-radius: 20px; padding: 25px; width: 280px; text-align: center; }
+        .password-box input { width: 100%; padding: 8px; margin: 15px 0; border: 1px solid #cbd5e1; border-radius: 8px; }
+        .loading { text-align: center; padding: 20px; color: #1e4663; }
+        .error { text-align: center; padding: 20px; color: #b91c1c; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="card-header">
+            <h1>📋 Turnos Rotativos</h1>
+            <div class="controls">
+                <label>Semana:</label>
+                <input type="number" id="weekNumber" value="30" min="1" max="53">
+                <label>Año:</label>
+                <select id="yearSelect"><option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option></select>
+            </div>
+            <button id="openModalBtn">👥 Colaboradores</button>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h2 id="weekTitle">Cargando...</h2></div>
+        <div class="table-wrapper" id="tableContainer"><div class="loading">Cargando datos desde Head Count...</div></div>
+        <div class="footer-note">🔵 D fijo | Vacante se queda en fila 5 (14:00 a 21:30, segundo turno)</div>
+    </div>
+</div>
+
+<div id="employeeModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Editar Colaboradores</h3>
+            <div class="modal-buttons">
+                <button id="saveModalBtn" class="btn-guardar-modal">💾 Guardar cambios</button>
+                <button id="closeModalBtn" class="btn-cerrar-modal">✖️ Cerrar</button>
+            </div>
+        </div>
+        <div id="employeeList" class="employee-list"></div>
+        <div class="add-form">
+            <input type="text" id="newName" placeholder="Nuevo colaborador">
+            <button id="addEmployeeBtn">+ Agregar</button>
+        </div>
+        <p style="font-size:0.7rem; padding:0 20px 15px; color:#666;">* Escriba "Vacante" para marcar puesto vacío (se queda en fila 5)</p>
+    </div>
+</div>
+
+<script>
+    // ========== CONFIGURACIÓN ==========
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwuACH7nHnR_m2hHq7fK3hKVTvDkjtGLIgEYLKxunJh2-MW5ZeoB7jeqaZU7_c6WIRF/exec';
+    
+    const horariosFijos = ["6:00 a 14:00", "6:00 a 14:00", "10:00 a 18:00", "14:00 a 21:30", "14:00 a 21:30", "21:30 a 6:00", "21:30 a 6:00"];
+    const descansosPorFila = [["Lunes"], ["Martes"], ["Miércoles"], ["Jueves"], ["Viernes"], ["Lunes", "Martes"], ["Miércoles", "Jueves"]];
+    const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+    const movimientoNormal = [3, 4, 1, 2, 5, 6, 0];
+    const POSICION_VACANTE_FIJA = 4;
+    const SEMANA_BASE = 30;
+
+    let colaboradores = [];
+    let colaboradoresTemp = [];
+
+    // ========== CONEXIÓN APPS SCRIPT ==========
+    async function cargarColaboradores() {
+        try {
+            console.log("Cargando desde:", SCRIPT_URL);
+            const response = await fetch(SCRIPT_URL);
+            console.log("Respuesta status:", response.status);
+            const data = await response.json();
+            console.log("Datos recibidos:", data);
+            if (data.success && data.data && data.data.length === 7) {
+                colaboradores = data.data;
+            } else {
+                // ORDEN EXACTO QUE PEDISTE PARA LA SEMANA 30
+                colaboradores = [
+                    "ROJAS DAVILA, BRUNO AARON",           // Fila 0 - 6:00 a 14:00
+                    "DIAZ ALARCON, JESUS FRANCISCO",        // Fila 1 - 6:00 a 14:00
+                    "ROMERO RUIZ, JULIO CESAR",             // Fila 2 - 10:00 a 18:00
+                    "JESUS ARIEL NAVARRO ALBERTO",          // Fila 3 - 14:00 a 21:30
+                    "JOSE GERARDO RECILLAS BARRERA",        // Fila 4 - 14:00 a 21:30
+                    "AGUILERA MARTINEZ, ISAAC ELIEL",       // Fila 5 - 21:30 a 6:00
+                    "AYALA MARTINEZ, DEMIAN VENTURA"        // Fila 6 - 21:30 a 6:00
+                ];
+            }
+            colaboradoresTemp = [...colaboradores];
+            console.log("Colaboradores finales:", colaboradores);
+        } catch (error) {
+            console.error("Error al cargar:", error);
+            colaboradores = [
+                "ROJAS DAVILA, BRUNO AARON",
+                "DIAZ ALARCON, JESUS FRANCISCO",
+                "ROMERO RUIZ, JULIO CESAR",
+                "JESUS ARIEL NAVARRO ALBERTO",
+                "JOSE GERARDO RECILLAS BARRERA",
+                "AGUILERA MARTINEZ, ISAAC ELIEL",
+                "AYALA MARTINEZ, DEMIAN VENTURA"
+            ];
+            colaboradoresTemp = [...colaboradores];
+        }
+    }
+
+    async function guardarColaboradores(lista) {
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colaboradores: lista })
+            });
+            colaboradores = [...lista];
+            colaboradoresTemp = [...lista];
+            alert("✅ Guardado en Google Sheets");
+            return true;
+        } catch (error) {
+            console.error("Error al guardar:", error);
+            alert("❌ Error al guardar: " + error.message);
+            return false;
+        }
+    }
+
+    // ========== ROTACIÓN ==========
+    function aplicarMovimiento(arr) {
+        let trabajo = [...arr];
+        let posVac = trabajo.indexOf("Vacante");
+        if (posVac !== -1 && posVac !== POSICION_VACANTE_FIJA) {
+            let temp = trabajo[POSICION_VACANTE_FIJA];
+            trabajo[POSICION_VACANTE_FIJA] = "Vacante";
+            trabajo[posVac] = temp;
+        }
+        let rotado = new Array(7);
+        for (let i = 0; i < 7; i++) rotado[movimientoNormal[i]] = trabajo[i];
+        let nuevaPos = rotado.indexOf("Vacante");
+        if (nuevaPos !== -1 && nuevaPos !== POSICION_VACANTE_FIJA) {
+            let temp = rotado[POSICION_VACANTE_FIJA];
+            rotado[POSICION_VACANTE_FIJA] = "Vacante";
+            rotado[nuevaPos] = temp;
+        }
+        return rotado;
+    }
+
+    function getNombresSemana(semana) {
+        if (colaboradores.length !== 7) return null;
+        if (semana === SEMANA_BASE) return [...colaboradores];
+        let res = [...colaboradores];
+        for (let i = 0; i < semana - SEMANA_BASE; i++) res = aplicarMovimiento(res);
+        return res;
+    }
+
+    // ========== FECHAS ==========
+    function getSemanaActualCDMX() {
+        let f = new Date();
+        let year = f.getFullYear();
+        let start = new Date(year, 0, 1);
+        let days = Math.floor((f - start) / 86400000);
+        return Math.ceil((days + start.getDay() + 1) / 7);
+    }
+
+    function getFechaInicioSemana(week, year) {
+        let f = new Date(year, 0, 1 + (week - 1) * 7);
+        let dia = f.getDay();
+        let diff = (dia === 0 ? -6 : 1 - dia);
+        f.setDate(f.getDate() + diff);
+        return f;
+    }
+
+    function formatearFecha(d) { return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+    // ========== MOSTRAR TABLA ==========
+    function mostrarTabla(semana, año) {
+        if (colaboradores.length !== 7) {
+            document.getElementById("tableContainer").innerHTML = `<div class="error">⚠️ Se requieren 7 colaboradores. Actual: ${colaboradores.length}</div>`;
+            return;
+        }
+        let nombres = getNombresSemana(semana);
+        if (!nombres) return;
+        let inicio = getFechaInicioSemana(semana, año);
+        let fin = new Date(inicio); fin.setDate(inicio.getDate() + 6);
+        document.getElementById("weekTitle").innerHTML = `Semana ${semana} · ${formatearFecha(inicio)}/${inicio.getFullYear()} - ${formatearFecha(fin)}/${fin.getFullYear()}`;
+        let html = `<table><thead><tr><th>HORARIO</th><th>COLABORADOR</th>`;
+        let fa = new Date(inicio);
+        for (let i = 0; i < DIAS.length; i++) { html += `<th>${DIAS[i]}<br>${formatearFecha(fa)}</th>`; fa.setDate(fa.getDate() + 1); }
+        html += `</tr></thead><tbody>`;
+        for (let i = 0; i < 7; i++) {
+            let nombre = nombres[i];
+            let rests = descansosPorFila[i];
+            html += `<tr><td class="horario-col">${horariosFijos[i]}</td><td class="nombre-col">${escapeHtml(nombre)}</td>`;
+            for (let d of DIAS) { let esD = rests.includes(d) && d !== "Sábado" && d !== "Domingo"; html += `<td>${esD ? '<span class="descanso">D</span>' : '<span class="asiste">AS</span>'}</td>`; }
+            html += `</tr>`;
+        }
+        html += `</tbody></table>`;
+        document.getElementById("tableContainer").innerHTML = html;
+    }
+
+    function escapeHtml(s) { return s.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+    // ========== MODAL ==========
+    let passwordValid = false;
+    function pedirPassword(callback) {
+        if (passwordValid) { callback(); return; }
+        let div = document.createElement('div'); div.className = 'password-prompt';
+        div.innerHTML = `<div class="password-box"><h3>🔐 Acceso</h3><input type="password" id="pwdInput" placeholder="Contraseña"><button id="pwdBtn">Acceder</button></div>`;
+        document.body.appendChild(div);
+        let input = document.getElementById('pwdInput'), btn = document.getElementById('pwdBtn');
+        let check = () => { if (input.value === "Hapack90.") { passwordValid = true; div.remove(); callback(); } else { alert("Contraseña incorrecta"); div.remove(); } };
+        btn.onclick = check;
+        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') check(); });
+        input.focus();
+    }
+
+    function renderizarModal() {
+        let cont = document.getElementById("employeeList");
+        cont.innerHTML = colaboradoresTemp.map((e,i) => `<div class="employee-item"><span class="employee-name">${escapeHtml(e)}</span><button class="edit-name" data-idx="${i}">✏️ Editar</button></div>`).join('');
+        document.querySelectorAll('.edit-name').forEach(btn => {
+            btn.onclick = () => {
+                let idx = parseInt(btn.dataset.idx);
+                let nuevo = prompt("Editar nombre:", colaboradoresTemp[idx]);
+                if (nuevo && nuevo.trim()) colaboradoresTemp[idx] = nuevo.trim();
+                renderizarModal();
+            };
+        });
+    }
+
+    function abrirModal() {
+        pedirPassword(() => {
+            colaboradoresTemp = [...colaboradores];
+            renderizarModal();
+            document.getElementById("employeeModal").style.display = "flex";
+        });
+    }
+
+    async function guardarYCerrar() {
+        if (colaboradoresTemp.length !== 7) { alert(`Deben ser 7 colaboradores. Actual: ${colaboradoresTemp.length}`); return; }
+        await guardarColaboradores(colaboradoresTemp);
+        let s = parseInt(document.getElementById("weekNumber").value);
+        let a = parseInt(document.getElementById("yearSelect").value);
+        mostrarTabla(s, a);
+        cerrarModal();
+    }
+
+    function cerrarModal() { document.getElementById("employeeModal").style.display = "none"; }
+
+    function agregarTemp() {
+        let nombre = document.getElementById("newName").value.trim();
+        if (!nombre) return alert("Ingrese nombre");
+        let idxVac = colaboradoresTemp.indexOf("Vacante");
+        if (idxVac !== -1) colaboradoresTemp[idxVac] = nombre;
+        else colaboradoresTemp.push(nombre);
+        document.getElementById("newName").value = "";
+        renderizarModal();
+        if (colaboradoresTemp.length > 7) alert("Hay más de 7. Guarde y luego edite.");
+    }
+
+    function actualizarManual() {
+        let s = parseInt(document.getElementById("weekNumber").value);
+        let a = parseInt(document.getElementById("yearSelect").value);
+        mostrarTabla(s, a);
+    }
+
+    // ========== INICIALIZACIÓN ==========
+    async function init() {
+        await cargarColaboradores();
+        document.getElementById("weekNumber").value = 30;
+        document.getElementById("yearSelect").value = 2026;
+        mostrarTabla(30, 2026);
+    }
+
+    // Eventos
+    const openBtn = document.getElementById("openModalBtn");
+    const closeBtn = document.getElementById("closeModalBtn");
+    const saveBtn = document.getElementById("saveModalBtn");
+    const addBtn = document.getElementById("addEmployeeBtn");
+    const weekInput = document.getElementById("weekNumber");
+    const yearSelect = document.getElementById("yearSelect");
+
+    if (openBtn) openBtn.onclick = abrirModal;
+    if (closeBtn) closeBtn.onclick = cerrarModal;
+    if (saveBtn) saveBtn.onclick = guardarYCerrar;
+    if (addBtn) addBtn.onclick = agregarTemp;
+    if (weekInput) weekInput.oninput = actualizarManual;
+    if (yearSelect) yearSelect.onchange = actualizarManual;
+
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
+    window.onclick = e => { if (e.target === document.getElementById("employeeModal")) cerrarModal(); };
+
+    init();
+</script>
+</body>
+</html>
