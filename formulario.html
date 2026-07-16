@@ -1369,7 +1369,7 @@
     const APPS_SCRIPT_HEADCOUNT = 'https://script.google.com/macros/s/AKfycbw1FSXUv0oZx_63MOpiMG7UMf3CVPjrTHffA0IfmzURBucKG9Dvy0yD6yy-RtReKoJsYQ/exec';
     
     // REGISTRO (guardar datos)
-    const APPS_SCRIPT_REGISTRO = 'https://script.google.com/macros/s/AKfycbyQqhTP8zGEuixAZHgcGQTdoa0d8UZWxM_Z4_S2DJgAkaXJJI6lHpmwO11cxBeuZTI-/exec';
+    const APPS_SCRIPT_REGISTRO = 'https://script.google.com/macros/s/AKfycbxsDP201kZk9XHB6T5rAib0Bqtz5lNqSKIT8BCWJUeywPsY3U1_3eFWmlNEm1HDMAMV/exec';
     
     const SPREADSHEET_ID = '1YU1HpwJVZS65yR31deIlc2rpTvqwhmgNUmoiL32Fah0';
 
@@ -1586,23 +1586,25 @@
     });
 
     // ============================================================
-    // CARGAR HEADCOUNT
+    // CARGAR HEADCOUNT - CON SESSIONSTORAGE
     // ============================================================
     async function cargarHeadcount() {
         showLoader();
         showProgress('⬇️ DESCARGANDO LISTA DE EMPLEADOS...', 10);
 
         try {
-            const cached = localStorage.getItem('headcountCache');
-            const cacheTime = localStorage.getItem('headcountCacheTime');
+            // Usar sessionStorage en lugar de localStorage
+            const cached = sessionStorage.getItem('headcountCache');
+            const cacheTime = sessionStorage.getItem('headcountCacheTime');
             const ahora = Date.now();
 
-            if (cached && cacheTime && (ahora - parseInt(cacheTime)) < 86400000) {
+            // Si existe caché en sessionStorage y tiene menos de 5 minutos (para evitar descargas excesivas en la misma sesión)
+            if (cached && cacheTime && (ahora - parseInt(cacheTime)) < 300000) {
                 const data = JSON.parse(cached);
                 mapEmpleados = new Map(data);
-                showProgress('✅ LISTA DE EMPLEADOS CARGADA (CACHÉ)', 100);
+                showProgress('✅ LISTA DE EMPLEADOS CARGADA (SESIÓN)', 100);
                 setTimeout(hideProgress, 600);
-                console.log('✅ Headcount desde caché:', mapEmpleados.size, 'empleados');
+                console.log('✅ Headcount desde sessionStorage:', mapEmpleados.size, 'empleados');
                 hideLoader();
                 return;
             }
@@ -1629,8 +1631,11 @@
 
                 mapEmpleados = empleados;
 
-                localStorage.setItem('headcountCache', JSON.stringify(Array.from(empleados.entries())));
-                localStorage.setItem('headcountCacheTime', ahora.toString());
+                // Guardar en sessionStorage (válido solo para esta pestaña)
+                try {
+                    sessionStorage.setItem('headcountCache', JSON.stringify(Array.from(empleados.entries())));
+                    sessionStorage.setItem('headcountCacheTime', ahora.toString());
+                } catch(e) { /* ignorar si falla */ }
 
                 showProgress(`✅ ${empleados.size} EMPLEADOS CARGADOS`, 100);
                 setTimeout(hideProgress, 600);
@@ -1657,20 +1662,23 @@
     // ============================================================
     async function cargarOrganigrama() {
         try {
-            const cached = localStorage.getItem('orgCache');
-            const cacheTime = localStorage.getItem('orgCacheTime');
+            // También usar sessionStorage para el organigrama
+            const cached = sessionStorage.getItem('orgCache');
+            const cacheTime = sessionStorage.getItem('orgCacheTime');
             const ahora = Date.now();
 
-            if (cached && cacheTime && (ahora - parseInt(cacheTime)) < 86400000) {
+            if (cached && cacheTime && (ahora - parseInt(cacheTime)) < 300000) {
                 listaTiendas = JSON.parse(cached);
-                console.log('✅ Organigrama desde caché:', listaTiendas.length, 'tiendas');
+                console.log('✅ Organigrama desde sessionStorage:', listaTiendas.length, 'tiendas');
             } else {
                 const res = await fetch(APPS_SCRIPT_ORGANIGRAMA + '?accion=getOrganigrama');
                 const data = await res.json();
                 if (data.success && data.data) {
                     listaTiendas = data.data;
-                    localStorage.setItem('orgCache', JSON.stringify(listaTiendas));
-                    localStorage.setItem('orgCacheTime', ahora.toString());
+                    try {
+                        sessionStorage.setItem('orgCache', JSON.stringify(listaTiendas));
+                        sessionStorage.setItem('orgCacheTime', ahora.toString());
+                    } catch(e) { /* ignorar */ }
                     console.log('✅ Organigrama descargado:', listaTiendas.length, 'tiendas');
                 }
             }
@@ -1822,7 +1830,8 @@
 
         const domValor = parseInt(domEsperado.value) || 0;
         const sbValor = parseInt(sbEsperado.value) || 0;
-        const totalesLlenos = (domValor > 0 || sbValor > 0);
+        const ambosCero = domEsperado.value.trim() === '0' && sbEsperado.value.trim() === '0';
+        const totalesLlenos = (domValor > 0 || sbValor > 0) || ambosCero;
 
         const todosCompletos = empleadoValido && bitacoraValida && rutaLlena && unidadLlena && totalesLlenos;
 
@@ -1854,15 +1863,19 @@
     // CALCULAR TOTALES CAPTURADOS
     // ============================================================
     function calcularTotalesCapturados() {
-        let totalDom = 0, totalSb = 0;
+        let totalDom = 0, totalNoDom = 0;
         document.querySelectorAll('#tablaBody tr').forEach(fila => {
             const img = fila.querySelector('.marca-icon');
             const cant = parseFloat(fila.querySelector('.campo-cantidad').value) || 0;
             const src = img?.src || '';
-            if (src.includes('dominos.png')) { totalDom += cant; }
-            else if (src.includes('starbucks.png')) { totalSb += cant; }
+            if (src.includes('dominos.png')) {
+                totalDom += cant;
+            } else {
+                // CUALQUIER otra tienda (Starbucks, Vips, etc.) va a la tarjeta de Starbucks
+                totalNoDom += cant;
+            }
         });
-        return { dominos: Math.round(totalDom), starbucks: Math.round(totalSb) };
+        return { dominos: Math.round(totalDom), starbucks: Math.round(totalNoDom) };
     }
 
     // ============================================================
@@ -2095,10 +2108,9 @@
             const marca = registro.MARCA || '';
             if (marca === 'DOMINOS') {
                 imgMarca.src = 'dominos.png';
-            } else if (marca === 'STARBUCKS') {
-                imgMarca.src = 'starbucks.png';
             } else {
-                imgMarca.src = 'logo.png';
+                // Cualquier otra marca usa el logo de Starbucks (o el que corresponda)
+                imgMarca.src = 'starbucks.png';
             }
             imgMarca.style.display = 'block';
             btnAdd.style.display = 'none';
@@ -2120,7 +2132,7 @@
 
         document.getElementById('nuevaCeco').value = ceco;
         document.getElementById('nuevaTienda').value = '';
-        document.getElementById('nuevaMarca').value = 'DOMINOS';
+        document.getElementById('nuevaMarca').value = 'STARBUCKS';
         document.getElementById('modalNuevaTienda').classList.add('active');
 
         document.getElementById('modalNuevaTienda').dataset.fila = numFila;
@@ -2312,7 +2324,7 @@
                     const src = img?.src || '';
                     let tipo = '';
                     if (src.includes('dominos.png')) tipo = 'DOMINOS';
-                    else if (src.includes('starbucks.png')) tipo = 'STARBUCKS';
+                    else tipo = 'STARBUCKS'; // Cualquier otra marca se guarda como Starbucks
 
                     registros.push({
                         tienda: tienda,
@@ -2408,8 +2420,8 @@
 
             listaTiendas.push({ CECO: ceco, TIENDA: tienda, MARCA: marca, ESTADO: estado });
             mapCeco.set(ceco, { MARCA: marca, TIENDA: tienda, ESTADO: estado });
-            localStorage.setItem('orgCache', JSON.stringify(listaTiendas));
-            localStorage.setItem('orgCacheTime', Date.now().toString());
+            sessionStorage.setItem('orgCache', JSON.stringify(listaTiendas));
+            sessionStorage.setItem('orgCacheTime', Date.now().toString());
 
             cerrarModalNuevaTienda();
             showToast('✅ Tienda agregada correctamente', 'success');
